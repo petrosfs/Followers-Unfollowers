@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import Guide from './Guide';
 import { unzip } from 'fflate';
+import { recordFollowers, clearHistory, accountFromZipName, avatarColors } from './history';
 
 interface UserData {
   username: string;
@@ -30,6 +31,7 @@ interface ComparisonResult {
 }
 
 type Language = 'el' | 'en';
+type Tab = 'notFollowingBack' | 'fans' | 'mutuals' | 'unfollowedYou' | 'youUnfollowed';
 
 const translations = {
   el: {
@@ -48,6 +50,13 @@ const translations = {
     descNotFollowingBack: 'Τους ακολουθείς, αλλά δεν σε ακολουθούν πίσω.',
     descFans: 'Σε ακολουθούν, αλλά δεν τους ακολουθείς.',
     descMutuals: 'Ακολουθείτε ο ένας τον άλλον.',
+    unfollowedYou: 'Σε έκαναν unfollow',
+    youUnfollowed: 'Έκανες unfollow',
+    descUnfollowedYou: 'Σε ακολουθούσαν την προηγούμενη φορά που ανέβασες αρχεία εδώ ({date}), αλλά όχι πια.',
+    descUnfollowedYouFirst: 'Οι followers σου αποθηκεύτηκαν, μόνο σε αυτή τη συσκευή. Την επόμενη φορά που θα ανεβάσεις νέα εξαγωγή, εδώ θα δεις ποιοι σε έκαναν unfollow στο μεταξύ.',
+    descYouUnfollowed: 'Λογαριασμοί που σταμάτησες πρόσφατα να ακολουθείς, σύμφωνα με το Instagram.',
+    clearHistory: 'Διαγραφή ιστορικού',
+    descHistoryCleared: 'Το ιστορικό διαγράφηκε από αυτή τη συσκευή. Θα ξεκινήσει ξανά την επόμενη φορά που θα ανεβάσεις αρχεία.',
     searchPlaceholder: 'Αναζήτηση χρήστη...',
     noResults: 'Δεν βρέθηκαν αποτελέσματα',
     waitingFiles: 'Περιμένω τα αρχεία σου...',
@@ -74,6 +83,13 @@ const translations = {
     descNotFollowingBack: "You follow them, but they don't follow you back.",
     descFans: "They follow you, but you don't follow them.",
     descMutuals: 'You follow each other.',
+    unfollowedYou: 'Unfollowed you',
+    youUnfollowed: 'You unfollowed',
+    descUnfollowedYou: 'They followed you the previous time you uploaded files here ({date}), but not anymore.',
+    descUnfollowedYouFirst: 'Your followers were saved, on this device only. Next time you upload a new export, you will see here who unfollowed you in the meantime.',
+    descYouUnfollowed: 'Accounts you recently stopped following, according to Instagram.',
+    clearHistory: 'Clear history',
+    descHistoryCleared: 'History was deleted from this device. It will start again the next time you upload files.',
     searchPlaceholder: 'Search user...',
     noResults: 'No results found',
     waitingFiles: 'Waiting for your files...',
@@ -92,7 +108,11 @@ export default function App() {
   const [following, setFollowing] = useState<UserData[]>([]);
   const [followersFileName, setFollowersFileName] = useState<string>('');
   const [followingFileName, setFollowingFileName] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'notFollowingBack' | 'fans' | 'mutuals'>('notFollowingBack');
+  const [activeTab, setActiveTab] = useState<Tab>('notFollowingBack');
+  // Followers comparison with the previous upload on this device
+  const [history, setHistory] = useState<{ account: string; previousAt: number | null; unfollowedYou: UserData[]; cleared?: boolean } | null>(null);
+  // From recently_unfollowed_profiles.json in the export (null = not in the uploaded files)
+  const [youUnfollowed, setYouUnfollowed] = useState<UserData[] | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
@@ -132,6 +152,17 @@ export default function App() {
         }
 
         return list.map(item => {
+          // Newer export format: { label_values: [{ label: 'Username', value }, { label: 'URL', value }] }
+          if (Array.isArray(item.label_values)) {
+            const get = (label: string) => item.label_values.find((l: any) => l.label === label)?.value as string | undefined;
+            const username = get('Username') || 'Unknown';
+            return {
+              username,
+              link: get('URL') || `https://instagram.com/${username}`,
+              date: item.timestamp ? new Date(item.timestamp * 1000).toLocaleString() : '',
+              timestamp: item.timestamp
+            };
+          }
           const entry = item.string_list_data?.[0] || {};
           let username = item.title || entry.value || 'Unknown';
           
@@ -266,14 +297,15 @@ export default function App() {
 
   // Extracts the followers / following files from an Instagram export .zip.
   // JSON files are preferred; HTML files are used only if no JSON is present.
-  const extractFromZip = async (zipFile: File): Promise<{ followers: File[]; following: File[] }> => {
+  const extractFromZip = async (zipFile: File): Promise<{ followers: File[]; following: File[]; unfollowed: File[] }> => {
     const buffer = new Uint8Array(await zipFile.arrayBuffer());
     const isFollowers = (name: string) => /^followers(_\d+)?\.(json|html)$/i.test(name);
     const isFollowing = (name: string) => /^following\.(json|html)$/i.test(name);
+    const isUnfollowed = (name: string) => /^recently_unfollowed_profiles\.(json|html)$/i.test(name);
     const baseName = (path: string) => path.split('/').pop() || '';
 
     const entries = await new Promise<Record<string, Uint8Array>>((resolve, reject) => {
-      unzip(buffer, { filter: f => { const n = baseName(f.name); return isFollowers(n) || isFollowing(n); } },
+      unzip(buffer, { filter: f => { const n = baseName(f.name); return isFollowers(n) || isFollowing(n) || isUnfollowed(n); } },
         (err, data) => (err ? reject(err) : resolve(data)));
     });
 
@@ -285,7 +317,7 @@ export default function App() {
       return json.length > 0 ? json : all;
     };
 
-    return { followers: toFiles(isFollowers), following: toFiles(isFollowing) };
+    return { followers: toFiles(isFollowers), following: toFiles(isFollowing), unfollowed: toFiles(isUnfollowed) };
   };
 
   const parseAll = async (files: File[]): Promise<UserData[] | null> => {
@@ -301,6 +333,23 @@ export default function App() {
     return mergeUsers(lists);
   };
 
+  // Compares the new followers list with the one saved on this device last time
+  const updateHistory = (account: string, data: UserData[]) => {
+    const previous = recordFollowers(account, data);
+    const current = new Set(data.map(u => u.username.toLowerCase()));
+    const unfollowedYou: UserData[] = previous
+      ? previous.users
+          .filter(p => !current.has(p.u.toLowerCase()))
+          .map(p => ({
+            username: p.u,
+            link: `https://instagram.com/${p.u}`,
+            date: p.t ? new Date(p.t * 1000).toLocaleString() : '',
+            timestamp: p.t
+          }))
+      : [];
+    setHistory({ account, previousAt: previous ? previous.savedAt : null, unfollowedYou });
+  };
+
   const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>, type: 'followers' | 'following') => {
     const files: File[] = e.target.files ? Array.from(e.target.files) : [];
     // Reset the input so selecting the same file(s) again still triggers onChange
@@ -313,12 +362,13 @@ export default function App() {
 
     // A .zip fills both boxes at once, whichever box it was dropped on
     if (zips.length > 0) {
-      const found = { followers: [] as File[], following: [] as File[] };
+      const found = { followers: [] as File[], following: [] as File[], unfollowed: [] as File[] };
       for (const zip of zips) {
         try {
           const r = await extractFromZip(zip);
           found.followers.push(...r.followers);
           found.following.push(...r.following);
+          found.unfollowed.push(...r.unfollowed);
         } catch (err) {
           setError(`${t.errorZip} (${zip.name})`);
           return;
@@ -334,12 +384,18 @@ export default function App() {
         if (!data) return;
         setFollowers(data);
         setFollowersFileName(zipLabel);
+        updateHistory(accountFromZipName(zips[0].name), data);
       }
       if (found.following.length > 0) {
         const data = await parseAll(found.following);
         if (!data) return;
         setFollowing(data);
         setFollowingFileName(zipLabel);
+      }
+      if (found.unfollowed.length > 0) {
+        const data = await parseAll(found.unfollowed);
+        if (!data) return;
+        setYouUnfollowed(data);
       }
       if (plain.length === 0) return;
     }
@@ -350,6 +406,7 @@ export default function App() {
     if (type === 'followers') {
       setFollowers(data);
       setFollowersFileName(label);
+      updateHistory('_', data);
     } else {
       setFollowing(data);
       setFollowingFileName(label);
@@ -362,6 +419,9 @@ export default function App() {
     setFollowersFileName('');
     setFollowingFileName('');
     setError(null);
+    setHistory(null);
+    setYouUnfollowed(null);
+    setActiveTab('notFollowingBack');
   };
 
   const getComparison = (): ComparisonResult => {
@@ -375,7 +435,12 @@ export default function App() {
     return { notFollowingBack, fans, mutuals };
   };
 
-  const results = getComparison();
+  const comparison = getComparison();
+  const results: Record<Tab, UserData[]> = {
+    ...comparison,
+    unfollowedYou: history?.unfollowedYou ?? [],
+    youUnfollowed: youUnfollowed ?? []
+  };
   const currentList = results[activeTab].filter(u => 
     u.username.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -489,7 +554,7 @@ export default function App() {
             className="space-y-6"
           >
             {/* Tabs */}
-            <div className="flex p-1 bg-neutral-200/50 rounded-xl">
+            <div className="grid grid-cols-3 gap-1 p-1 bg-neutral-200/50 rounded-xl">
               <TabButton 
                 active={activeTab === 'notFollowingBack'} 
                 onClick={() => setActiveTab('notFollowingBack')}
@@ -508,12 +573,48 @@ export default function App() {
                 label={t.mutuals}
                 count={results.mutuals.length}
               />
+              {history && (
+                <TabButton
+                  active={activeTab === 'unfollowedYou'}
+                  onClick={() => setActiveTab('unfollowedYou')}
+                  label={t.unfollowedYou}
+                  count={results.unfollowedYou.length}
+                />
+              )}
+              {youUnfollowed && (
+                <TabButton
+                  active={activeTab === 'youUnfollowed'}
+                  onClick={() => setActiveTab('youUnfollowed')}
+                  label={t.youUnfollowed}
+                  count={results.youUnfollowed.length}
+                />
+              )}
             </div>
 
             {/* Short explanation of the active tab */}
-            <p className="-mt-3 px-1 text-sm text-neutral-500">
-              {activeTab === 'notFollowingBack' ? t.descNotFollowingBack : activeTab === 'fans' ? t.descFans : t.descMutuals}
-            </p>
+            <div className="-mt-3 px-1 text-sm text-neutral-500 space-y-1">
+              <p>
+                {activeTab === 'notFollowingBack' && t.descNotFollowingBack}
+                {activeTab === 'fans' && t.descFans}
+                {activeTab === 'mutuals' && t.descMutuals}
+                {activeTab === 'youUnfollowed' && t.descYouUnfollowed}
+                {activeTab === 'unfollowedYou' && history && (history.cleared ? t.descHistoryCleared : history.previousAt
+                  ? t.descUnfollowedYou.replace('{date}', new Date(history.previousAt).toLocaleDateString())
+                  : t.descUnfollowedYouFirst)}
+              </p>
+              {activeTab === 'unfollowedYou' && history && !history.cleared && (
+                <button
+                  onClick={() => {
+                    clearHistory(history.account);
+                    setHistory({ account: history.account, previousAt: null, unfollowedYou: [], cleared: true });
+                    setError(null);
+                  }}
+                  className="text-xs text-neutral-400 underline hover:text-red-500 transition-colors"
+                >
+                  {t.clearHistory}
+                </button>
+              )}
+            </div>
 
             {/* Search */}
             <div className="relative">
@@ -539,7 +640,10 @@ export default function App() {
                     className="bg-white p-4 rounded-2xl border border-neutral-100 shadow-sm flex items-center justify-between group hover:border-purple-200 transition-colors"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-neutral-100 flex items-center justify-center text-neutral-500 font-bold">
+                      <div
+                        className="w-10 h-10 rounded-full flex items-center justify-center font-bold"
+                        style={avatarColors(user.username)}
+                      >
                         {user.username[0].toUpperCase()}
                       </div>
                       <div>
