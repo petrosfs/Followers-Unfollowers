@@ -43,8 +43,11 @@ const translations = {
     users: 'χρήστες',
     uploadPlaceholder: 'Κάνε κλικ ή σύρε το .zip ή τα αρχεία εδώ',
     notFollowingBack: 'Δεν σε ακολουθούν',
-    fans: 'Fans',
-    mutuals: 'Mutuals',
+    fans: 'Θαυμαστές',
+    mutuals: 'Κοινοί',
+    descNotFollowingBack: 'Τους ακολουθείς, αλλά δεν σε ακολουθούν πίσω.',
+    descFans: 'Σε ακολουθούν, αλλά δεν τους ακολουθείς.',
+    descMutuals: 'Ακολουθείτε ο ένας τον άλλον.',
     searchPlaceholder: 'Αναζήτηση χρήστη...',
     noResults: 'Δεν βρέθηκαν αποτελέσματα',
     waitingFiles: 'Περιμένω τα αρχεία σου...',
@@ -68,6 +71,9 @@ const translations = {
     notFollowingBack: 'Not following back',
     fans: 'Fans',
     mutuals: 'Mutuals',
+    descNotFollowingBack: "You follow them, but they don't follow you back.",
+    descFans: "They follow you, but you don't follow them.",
+    descMutuals: 'You follow each other.',
     searchPlaceholder: 'Search user...',
     noResults: 'No results found',
     waitingFiles: 'Waiting for your files...',
@@ -503,6 +509,11 @@ export default function App() {
                 count={results.mutuals.length}
               />
             </div>
+
+            {/* Short explanation of the active tab */}
+            <p className="-mt-3 px-1 text-sm text-neutral-500">
+              {activeTab === 'notFollowingBack' ? t.descNotFollowingBack : activeTab === 'fans' ? t.descFans : t.descMutuals}
+            </p>
 
             {/* Search */}
             <div className="relative">
