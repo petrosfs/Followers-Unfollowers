@@ -11,6 +11,7 @@ import {
   ExternalLink,
   Trash2,
   HelpCircle,
+  SlidersHorizontal,
   ChevronRight
 } from 'lucide-react';
 import Guide from './Guide';
@@ -33,6 +34,7 @@ interface ComparisonResult {
 
 type Language = 'el' | 'en';
 type HistoryAction = 'compareOlder' | 'backup' | 'restore' | 'clear';
+type SortOrder = 'newest' | 'oldest' | 'az';
 type Tab = 'notFollowingBack' | 'fans' | 'mutuals' | 'unfollowedYou' | 'youUnfollowed';
 
 const translations = {
@@ -68,6 +70,15 @@ const translations = {
     dlgRestore: 'Αν είχες πατήσει <b>Αποθήκευση ιστορικού</b> στο παρελθόν, επίλεξε στο επόμενο βήμα εκείνο το αρχείο (.json). Η εφαρμογή θα συγκρίνει τους followers που είχες τότε με τους τωρινούς.<br><br>Δουλεύει και σε άλλη συσκευή ή browser, αρκεί να είναι από τον <b>ίδιο λογαριασμό</b>.',
     dlgClear: 'Θα διαγραφεί η λίστα των followers που έχει κρατήσει η εφαρμογή <b>σε αυτόν τον browser</b>. Η επόμενη σύγκριση θα ξεκινήσει από την αρχή.<br><br>Τα αρχεία που έχεις κατεβάσει (exports ή αρχεία ιστορικού) δεν επηρεάζονται. <b>Δεν αναιρείται.</b>',
     chooseFile: 'Επιλογή αρχείου',
+    filters: 'Φίλτρα',
+    dateFrom: 'Από',
+    dateTo: 'Έως',
+    sortBy: 'Ταξινόμηση',
+    sortNewest: 'Νεότερα πρώτα',
+    sortOldest: 'Παλαιότερα πρώτα',
+    sortAZ: 'Αλφαβητικά (A–Z)',
+    clearFilters: 'Καθαρισμός φίλτρων',
+    showing: 'Εμφανίζονται {n} από {total}',
     download: 'Λήψη αρχείου',
     delete: 'Διαγραφή',
     compareOlder: 'Σύγκριση με παλιότερο export',
@@ -123,6 +134,15 @@ const translations = {
     dlgRestore: 'If you used <b>Save history</b> before, choose that file (.json) in the next step. The app will compare your followers back then with your current ones.<br><br>It also works on another device or browser, as long as it is from the <b>same account</b>.',
     dlgClear: 'The followers list the app has kept <b>in this browser</b> will be deleted. The next comparison will start from scratch.<br><br>Files you downloaded (exports or history files) are not affected. <b>This cannot be undone.</b>',
     chooseFile: 'Choose file',
+    filters: 'Filters',
+    dateFrom: 'From',
+    dateTo: 'To',
+    sortBy: 'Sort',
+    sortNewest: 'Newest first',
+    sortOldest: 'Oldest first',
+    sortAZ: 'Alphabetical (A–Z)',
+    clearFilters: 'Clear filters',
+    showing: 'Showing {n} of {total}',
     download: 'Download file',
     delete: 'Delete',
     compareOlder: 'Compare with an older export',
@@ -160,6 +180,11 @@ export default function App() {
   // From recently_unfollowed_profiles.json in the export (null = not in the uploaded files)
   const [youUnfollowed, setYouUnfollowed] = useState<UserData[] | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  // Date filter (YYYY-MM-DD from <input type="date">) and sort order of the list
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
   const [error, setError] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
   // Errors from the history actions, shown inside the 'Unfollowed you' tab
@@ -567,6 +592,8 @@ export default function App() {
     setYouUnfollowed(null);
     setHistoryError(null);
     setActiveTab('notFollowingBack');
+    setDateFrom('');
+    setDateTo('');
   };
 
   const getComparison = (): ComparisonResult => {
@@ -586,9 +613,27 @@ export default function App() {
     unfollowedYou: history?.unfollowedYou ?? [],
     youUnfollowed: youUnfollowed ?? []
   };
-  const currentList = results[activeTab].filter(u => 
-    u.username.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Local-time day bounds for the date filter (inclusive)
+  const fromMs = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null;
+  const toMs = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : null;
+  const dateFilterActive = fromMs !== null || toMs !== null;
+  const tabList = results[activeTab];
+  const currentList = tabList
+    .filter(u => u.username.toLowerCase().includes(searchQuery.toLowerCase()))
+    .filter(u => {
+      if (!dateFilterActive) return true;
+      if (!u.timestamp) return false; // no date: cannot match a date range
+      const ms = u.timestamp * 1000;
+      return (fromMs === null || ms >= fromMs) && (toMs === null || ms <= toMs);
+    })
+    .sort((a, b) => {
+      if (sortOrder === 'az') return a.username.localeCompare(b.username);
+      // Entries without a date go last
+      const ta = a.timestamp ?? (sortOrder === 'newest' ? -Infinity : Infinity);
+      const tb = b.timestamp ?? (sortOrder === 'newest' ? -Infinity : Infinity);
+      return sortOrder === 'newest' ? tb - ta : ta - tb;
+    });
+  const filtersChanged = dateFilterActive || sortOrder !== 'newest';
 
   return (
     <div className="min-h-screen bg-neutral-50 font-sans text-neutral-900 pb-20">
@@ -769,16 +814,86 @@ export default function App() {
               )}
             </div>
 
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
-              <input 
-                type="text"
-                placeholder={t.searchPlaceholder}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-white border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all"
-              />
+            {/* Search + filters */}
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+                  <input 
+                    type="text"
+                    placeholder={t.searchPlaceholder}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 bg-white border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all"
+                  />
+                </div>
+                <button
+                  onClick={() => setFiltersOpen(o => !o)}
+                  aria-expanded={filtersOpen}
+                  aria-label={t.filters}
+                  className={`relative shrink-0 flex items-center gap-2 px-3.5 rounded-xl border transition-colors ${
+                    filtersOpen || filtersChanged
+                      ? 'bg-purple-50 border-purple-300 text-purple-700'
+                      : 'bg-white border-neutral-200 text-neutral-600 hover:border-purple-300'
+                  }`}
+                >
+                  <SlidersHorizontal className="w-5 h-5" />
+                  <span className="hidden sm:inline text-sm font-medium">{t.filters}</span>
+                  {filtersChanged && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-purple-600" />}
+                </button>
+              </div>
+
+              {filtersOpen && (
+                <div className="bg-white border border-neutral-200 rounded-xl p-3 space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="text-xs font-medium text-neutral-500 space-y-1">
+                      <span>{t.dateFrom}</span>
+                      <input
+                        type="date"
+                        value={dateFrom}
+                        max={dateTo || undefined}
+                        onChange={(e) => setDateFrom(e.target.value)}
+                        className="block w-full min-w-0 px-2.5 py-2 text-sm text-neutral-900 bg-neutral-50 border border-neutral-200 rounded-lg focus:outline-none focus:border-purple-500"
+                      />
+                    </label>
+                    <label className="text-xs font-medium text-neutral-500 space-y-1">
+                      <span>{t.dateTo}</span>
+                      <input
+                        type="date"
+                        value={dateTo}
+                        min={dateFrom || undefined}
+                        onChange={(e) => setDateTo(e.target.value)}
+                        className="block w-full min-w-0 px-2.5 py-2 text-sm text-neutral-900 bg-neutral-50 border border-neutral-200 rounded-lg focus:outline-none focus:border-purple-500"
+                      />
+                    </label>
+                  </div>
+                  <label className="block text-xs font-medium text-neutral-500 space-y-1">
+                    <span>{t.sortBy}</span>
+                    <select
+                      value={sortOrder}
+                      onChange={(e) => setSortOrder(e.target.value as SortOrder)}
+                      className="block w-full px-2.5 py-2 text-sm text-neutral-900 bg-neutral-50 border border-neutral-200 rounded-lg focus:outline-none focus:border-purple-500"
+                    >
+                      <option value="newest">{t.sortNewest}</option>
+                      <option value="oldest">{t.sortOldest}</option>
+                      <option value="az">{t.sortAZ}</option>
+                    </select>
+                  </label>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-neutral-500">
+                      {t.showing.replace('{n}', String(currentList.length)).replace('{total}', String(tabList.length))}
+                    </span>
+                    {filtersChanged && (
+                      <button
+                        onClick={() => { setDateFrom(''); setDateTo(''); setSortOrder('newest'); }}
+                        className="text-purple-600 underline hover:text-purple-800"
+                      >
+                        {t.clearFilters}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* List */}
@@ -803,7 +918,9 @@ export default function App() {
                         <h4 className="font-semibold text-neutral-900">{user.username}</h4>
                         <p className="text-xs text-neutral-500">
                           {(() => {
-                            const d = user.timestamp ? new Date(user.timestamp * 1000).toLocaleDateString(locale) : user.date;
+                            const d = user.timestamp
+                              ? new Date(user.timestamp * 1000).toLocaleString(locale, { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+                              : user.date;
                             if (!d) return t.noDate;
                             const label = activeTab === 'fans' ? t.followsYouSince
                               : activeTab === 'unfollowedYou' ? t.followedYouSince
