@@ -55,6 +55,7 @@ const content: Record<Language, { heading: string; intro: string; close: string;
       {
         title: 'Περίμενε και κατέβασε',
         body: 'Η εξαγωγή μπορεί να πάρει από λίγα λεπτά έως αρκετές ώρες. Όταν είναι έτοιμη θα λάβεις ειδοποίηση. Γύρνα στο <b>Export your information</b> και κατέβασε το αρχείο <b>.zip</b>. Έχεις <b>4 μέρες</b> για να το κατεβάσεις.',
+        image: 'guide/step-7.png',
       },
       {
         title: 'Ανέβασέ το εδώ',
@@ -109,6 +110,7 @@ const content: Record<Language, { heading: string; intro: string; close: string;
       {
         title: 'Wait and download',
         body: 'The export can take from a few minutes to several hours. You will get a notification when it is ready. Go back to <b>Export your information</b> and download the <b>.zip</b> file. You have <b>4 days</b> to download it.',
+        image: 'guide/step-7.png',
       },
       {
         title: 'Upload it here',
