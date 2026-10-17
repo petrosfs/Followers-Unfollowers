@@ -11,12 +11,19 @@ interface GuideStep {
   image?: string;
 }
 
-const content: Record<Language, { heading: string; intro: string; close: string; tip: string; steps: GuideStep[] }> = {
+const content: Record<Language, { heading: string; intro: string; close: string; tip: string; steps: GuideStep[]; dataTitle: string; dataItems: string[] }> = {
   el: {
     heading: 'Αναλυτικός οδηγός',
     intro: 'Το Instagram δεν δίνει τη λίστα απευθείας. Ζητάς ένα αρχείο εξαγωγής των δεδομένων σου και το ανεβάζεις εδώ. Τα αρχεία διαβάζονται μόνο στη συσκευή σου και δεν στέλνονται πουθενά.',
     close: 'Κλείσιμο',
     tip: 'Οι εικόνες είναι από το Instagram στα αγγλικά. Τα ονόματα των μενού μπορεί να διαφέρουν λίγο ανάλογα με την έκδοση και τη γλώσσα.',
+    dataTitle: 'Πού αποθηκεύονται τα δεδομένα',
+    dataItems: [
+      'Τα αρχεία σου διαβάζονται <b>μόνο στη συσκευή σου</b> και δεν ανεβαίνουν πουθενά.',
+      'Για την καρτέλα <b>Σε έκαναν unfollow</b>, η λίστα των followers σου κρατιέται <b>μόνο σε αυτόν τον browser</b>, ώστε την επόμενη φορά να γίνει σύγκριση. Οι νέες εκδόσεις της εφαρμογής δεν τη σβήνουν.',
+      '<b>Χάνεται</b> αν διαγράψεις τα δεδομένα του browser ή του site, αν χρησιμοποιείς ιδιωτική περιήγηση, ή αν ανοίξεις την εφαρμογή σε άλλο browser ή άλλη συσκευή. Στο iPhone (Safari) μπορεί να σβηστεί αν δεν ανοίξεις την εφαρμογή για περίπου 7 μέρες, εκτός αν την έχεις προσθέσει στην αρχική οθόνη.',
+      '<b>Για να μη χάσεις τη σύγκριση:</b> πάτα <b>Αποθήκευση ιστορικού</b> και κράτα το αρχείο, για να το ανεβάσεις αργότερα με <b>Επαναφορά ιστορικού</b>. Ή κράτα τα παλιά σου exports από το Instagram: με <b>Σύγκριση με παλιότερο export</b> η εφαρμογή συγκρίνει απευθείας το παλιό με το νέο.',
+    ],
     steps: [
       {
         title: 'Άνοιξε το Κέντρο λογαριασμών',
@@ -72,6 +79,13 @@ const content: Record<Language, { heading: string; intro: string; close: string;
     intro: "Instagram doesn't show this list directly. You request an export of your data and upload it here. Files are read only on your device and are never sent anywhere.",
     close: 'Close',
     tip: 'Screenshots are from Instagram in English. Menu names may differ slightly depending on the version and language.',
+    dataTitle: 'Where your data is kept',
+    dataItems: [
+      'Your files are read <b>only on your device</b> and are never uploaded anywhere.',
+      'For the <b>Unfollowed you</b> tab, your followers list is kept <b>only in this browser</b>, so it can be compared next time. New versions of the app do not delete it.',
+      '<b>It is lost</b> if you clear the browser or site data, use private browsing, or open the app in another browser or device. On iPhone (Safari) it may be deleted if you do not open the app for about 7 days, unless you added it to your home screen.',
+      '<b>To keep the comparison:</b> tap <b>Save history</b> and keep the file, then load it later with <b>Restore history</b>. Or keep your old Instagram exports: with <b>Compare with an older export</b> the app compares the old one with the new one directly.',
+    ],
     steps: [
       {
         title: 'Open Accounts Center',
@@ -200,6 +214,15 @@ export default function Guide({ open, onClose, language }: { open: boolean; onCl
               </ol>
 
               <p className="text-xs text-neutral-400">{c.tip}</p>
+
+              <section className="rounded-2xl bg-neutral-50 border border-neutral-100 p-4 space-y-2">
+                <h3 className="font-semibold text-neutral-900">{c.dataTitle}</h3>
+                <ul className="list-disc pl-5 space-y-2 text-sm text-neutral-600 leading-relaxed">
+                  {c.dataItems.map((item, i) => (
+                    <li key={i} dangerouslySetInnerHTML={{ __html: item }} />
+                  ))}
+                </ul>
+              </section>
             </div>
           </motion.div>
         </motion.div>

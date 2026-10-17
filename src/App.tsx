@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import Guide from './Guide';
 import { unzip } from 'fflate';
-import { recordFollowers, clearHistory, accountFromZipName, avatarColors } from './history';
+import { recordFollowers, clearHistory, accountFromZipName, dateFromZipName, avatarColors, toSnapshot, setPair, sameUsers, makeBackup, parseBackup, Snapshot } from './history';
 
 interface UserData {
   username: string;
@@ -52,10 +52,20 @@ const translations = {
     descMutuals: 'Ακολουθείτε ο ένας τον άλλον.',
     unfollowedYou: 'Σε έκαναν unfollow',
     youUnfollowed: 'Έκανες unfollow',
-    descUnfollowedYou: 'Σε ακολουθούσαν την προηγούμενη φορά που ανέβασες αρχεία εδώ ({date}), αλλά όχι πια.',
-    descUnfollowedYouFirst: 'Οι followers σου αποθηκεύτηκαν, μόνο σε αυτή τη συσκευή. Την επόμενη φορά που θα ανεβάσεις νέα εξαγωγή, εδώ θα δεις ποιοι σε έκαναν unfollow στο μεταξύ.',
+    descUnfollowedYou: 'Σε ακολουθούσαν στις {date}, αλλά όχι πια.',
+    descUnfollowedYouFirst: 'Οι followers σου αποθηκεύτηκαν, μόνο σε αυτή τη συσκευή. Την επόμενη φορά που θα ανεβάσεις νέα εξαγωγή, εδώ θα δεις ποιοι σε έκαναν unfollow στο μεταξύ. Αν έχεις παλιότερο export ή αρχείο ιστορικού, ανέβασέ το τώρα για άμεση σύγκριση.',
     descYouUnfollowed: 'Λογαριασμοί που σταμάτησες πρόσφατα να ακολουθείς, σύμφωνα με το Instagram.',
     clearHistory: 'Διαγραφή ιστορικού',
+    compareOlder: 'Σύγκριση με παλιότερο export',
+    backupHistory: 'Αποθήκευση ιστορικού',
+    restoreHistory: 'Επαναφορά ιστορικού',
+    errorOtherAccount: 'Το αρχείο είναι από άλλον λογαριασμό',
+    errorNotOlder: 'Αυτό το export δεν είναι παλιότερο από το τρέχον',
+    errorBackup: 'Δεν είναι έγκυρο αρχείο ιστορικού αυτής της εφαρμογής',
+    followingSince: 'Ακολουθείς από τις',
+    followsYouSince: 'Σε ακολουθεί από τις',
+    followedYouSince: 'Σε ακολουθούσε από τις',
+    unfollowedOn: 'Unfollow στις',
     descHistoryCleared: 'Το ιστορικό διαγράφηκε από αυτή τη συσκευή. Θα ξεκινήσει ξανά την επόμενη φορά που θα ανεβάσεις αρχεία.',
     searchPlaceholder: 'Αναζήτηση χρήστη...',
     noResults: 'Δεν βρέθηκαν αποτελέσματα',
@@ -85,10 +95,20 @@ const translations = {
     descMutuals: 'You follow each other.',
     unfollowedYou: 'Unfollowed you',
     youUnfollowed: 'You unfollowed',
-    descUnfollowedYou: 'They followed you the previous time you uploaded files here ({date}), but not anymore.',
-    descUnfollowedYouFirst: 'Your followers were saved, on this device only. Next time you upload a new export, you will see here who unfollowed you in the meantime.',
+    descUnfollowedYou: 'They followed you on {date}, but not anymore.',
+    descUnfollowedYouFirst: 'Your followers were saved, on this device only. Next time you upload a new export, you will see here who unfollowed you in the meantime. If you have an older export or a history file, upload it now to compare right away.',
     descYouUnfollowed: 'Accounts you recently stopped following, according to Instagram.',
     clearHistory: 'Clear history',
+    compareOlder: 'Compare with an older export',
+    backupHistory: 'Save history',
+    restoreHistory: 'Restore history',
+    errorOtherAccount: 'This file is from a different account',
+    errorNotOlder: 'This export is not older than the current one',
+    errorBackup: 'Not a valid history file of this app',
+    followingSince: 'Following since',
+    followsYouSince: 'Follows you since',
+    followedYouSince: 'Followed you since',
+    unfollowedOn: 'Unfollowed on',
     descHistoryCleared: 'History was deleted from this device. It will start again the next time you upload files.',
     searchPlaceholder: 'Search user...',
     noResults: 'No results found',
@@ -110,12 +130,14 @@ export default function App() {
   const [followingFileName, setFollowingFileName] = useState<string>('');
   const [activeTab, setActiveTab] = useState<Tab>('notFollowingBack');
   // Followers comparison with the previous upload on this device
-  const [history, setHistory] = useState<{ account: string; previousAt: number | null; unfollowedYou: UserData[]; cleared?: boolean } | null>(null);
+  const [history, setHistory] = useState<{ account: string; current: Snapshot; previousAt: number | null; unfollowedYou: UserData[]; cleared?: boolean } | null>(null);
   // From recently_unfollowed_profiles.json in the export (null = not in the uploaded files)
   const [youUnfollowed, setYouUnfollowed] = useState<UserData[] | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
+  // Errors from the history actions, shown inside the 'Unfollowed you' tab
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const closeGuide = useCallback(() => setGuideOpen(false), []);
 
   const t = translations[language];
@@ -333,21 +355,97 @@ export default function App() {
     return mergeUsers(lists);
   };
 
-  // Compares the new followers list with the one saved on this device last time
-  const updateHistory = (account: string, data: UserData[]) => {
-    const previous = recordFollowers(account, data);
-    const current = new Set(data.map(u => u.username.toLowerCase()));
+  const locale = language === 'el' ? 'el-GR' : 'en-GB';
+
+  // Shows who is in `previous` but not in `current`
+  const applyHistory = (account: string, current: Snapshot, previous: Snapshot | null) => {
+    setHistoryError(null);
+    const now = new Set(current.users.map(u => u.u.toLowerCase()));
     const unfollowedYou: UserData[] = previous
       ? previous.users
-          .filter(p => !current.has(p.u.toLowerCase()))
-          .map(p => ({
-            username: p.u,
-            link: `https://instagram.com/${p.u}`,
-            date: p.t ? new Date(p.t * 1000).toLocaleString() : '',
-            timestamp: p.t
-          }))
+          .filter(p => !now.has(p.u.toLowerCase()))
+          .map(p => ({ username: p.u, link: `https://instagram.com/${p.u}`, date: '', timestamp: p.t }))
       : [];
-    setHistory({ account, previousAt: previous ? previous.savedAt : null, unfollowedYou });
+    setHistory({ account, current, previousAt: previous ? previous.savedAt : null, unfollowedYou });
+  };
+
+  // Compares the new followers list with the one saved on this device last time
+  const updateHistory = (account: string, data: UserData[], dataDate?: number) => {
+    const current = toSnapshot(data, dataDate);
+    applyHistory(account, current, recordFollowers(account, current));
+  };
+
+  const isOtherAccount = (a: string, b: string) => a !== '_' && b !== '_' && a !== b;
+
+  // Older Instagram export (zip or followers files) to compare against right away
+  const handleOlderExport = async (e: ChangeEvent<HTMLInputElement>) => {
+    const files: File[] = e.target.files ? Array.from(e.target.files) : [];
+    e.target.value = '';
+    if (!history || files.length === 0) return;
+    setHistoryError(null);
+
+    let followerFiles = files.filter(f => !f.name.toLowerCase().endsWith('.zip'));
+    const zip = files.find(f => f.name.toLowerCase().endsWith('.zip'));
+    if (zip) {
+      try {
+        followerFiles = (await extractFromZip(zip)).followers;
+      } catch {
+        setHistoryError(`${t.errorZip} (${zip.name})`);
+        return;
+      }
+      if (followerFiles.length === 0) {
+        setHistoryError(`${t.zipEmpty} (${zip.name})`);
+        return;
+      }
+      if (isOtherAccount(accountFromZipName(zip.name), history.account)) {
+        setHistoryError(`${t.errorOtherAccount} (${zip.name})`);
+        return;
+      }
+    }
+    const data = await parseAll(followerFiles);
+    if (!data) return;
+    const date = (zip && dateFromZipName(zip.name)) ?? files[0].lastModified;
+    if (date >= history.current.savedAt && zip && dateFromZipName(zip.name) !== undefined) {
+      setHistoryError(`${t.errorNotOlder} (${zip.name})`);
+      return;
+    }
+    const previous = toSnapshot(data, date);
+    setPair(history.account, previous, history.current);
+    applyHistory(history.account, history.current, previous);
+  };
+
+  // Saves the stored history as a file the user keeps
+  const handleBackup = () => {
+    if (!history) return;
+    const content = makeBackup(history.account);
+    if (!content) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([content], { type: 'application/json' }));
+    const day = new Date().toISOString().slice(0, 10);
+    a.download = `followers-history-${history.account === '_' ? 'account' : history.account}-${day}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  // Restores a history file saved earlier (e.g. on another device or browser)
+  const handleRestore = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!history || !file) return;
+    setHistoryError(null);
+    const backup = parseBackup(await file.text());
+    if (!backup) {
+      setHistoryError(`${t.errorBackup} (${file.name})`);
+      return;
+    }
+    if (isOtherAccount(backup.account, history.account)) {
+      setHistoryError(`${t.errorOtherAccount} (${file.name})`);
+      return;
+    }
+    const { latest, baseline } = backup.store;
+    const previous = latest && !sameUsers(latest, history.current) ? latest : baseline ?? null;
+    if (previous) setPair(history.account, previous, history.current);
+    applyHistory(history.account, history.current, previous);
   };
 
   const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>, type: 'followers' | 'following') => {
@@ -384,7 +482,7 @@ export default function App() {
         if (!data) return;
         setFollowers(data);
         setFollowersFileName(zipLabel);
-        updateHistory(accountFromZipName(zips[0].name), data);
+        updateHistory(accountFromZipName(zips[0].name), data, dateFromZipName(zips[0].name));
       }
       if (found.following.length > 0) {
         const data = await parseAll(found.following);
@@ -421,6 +519,7 @@ export default function App() {
     setError(null);
     setHistory(null);
     setYouUnfollowed(null);
+    setHistoryError(null);
     setActiveTab('notFollowingBack');
   };
 
@@ -599,20 +698,43 @@ export default function App() {
                 {activeTab === 'mutuals' && t.descMutuals}
                 {activeTab === 'youUnfollowed' && t.descYouUnfollowed}
                 {activeTab === 'unfollowedYou' && history && (history.cleared ? t.descHistoryCleared : history.previousAt
-                  ? t.descUnfollowedYou.replace('{date}', new Date(history.previousAt).toLocaleDateString())
+                  ? t.descUnfollowedYou.replace('{date}', new Date(history.previousAt).toLocaleDateString(locale))
                   : t.descUnfollowedYouFirst)}
               </p>
-              {activeTab === 'unfollowedYou' && history && !history.cleared && (
-                <button
-                  onClick={() => {
-                    clearHistory(history.account);
-                    setHistory({ account: history.account, previousAt: null, unfollowedYou: [], cleared: true });
-                    setError(null);
-                  }}
-                  className="text-xs text-neutral-400 underline hover:text-red-500 transition-colors"
-                >
-                  {t.clearHistory}
-                </button>
+              {activeTab === 'unfollowedYou' && historyError && (
+                <p className="flex items-center gap-1.5 text-xs text-red-600">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  {historyError}
+                </p>
+              )}
+              {activeTab === 'unfollowedYou' && history && (
+                <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-xs">
+                  <label className="text-purple-600 underline cursor-pointer hover:text-purple-800">
+                    {t.compareOlder}
+                    <input type="file" accept=".zip,.json,.html" multiple className="hidden" onChange={handleOlderExport} />
+                  </label>
+                  {!history.cleared && (
+                    <button onClick={handleBackup} className="text-purple-600 underline hover:text-purple-800">
+                      {t.backupHistory}
+                    </button>
+                  )}
+                  <label className="text-purple-600 underline cursor-pointer hover:text-purple-800">
+                    {t.restoreHistory}
+                    <input type="file" accept=".json" className="hidden" onChange={handleRestore} />
+                  </label>
+                  {!history.cleared && (
+                    <button
+                      onClick={() => {
+                        clearHistory(history.account);
+                        setHistory({ ...history, previousAt: null, unfollowedYou: [], cleared: true });
+                        setError(null);
+                      }}
+                      className="text-neutral-400 underline hover:text-red-500"
+                    >
+                      {t.clearHistory}
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 
@@ -648,7 +770,17 @@ export default function App() {
                       </div>
                       <div>
                         <h4 className="font-semibold text-neutral-900">{user.username}</h4>
-                        <p className="text-xs text-neutral-500">{user.date || t.noDate}</p>
+                        <p className="text-xs text-neutral-500">
+                          {(() => {
+                            const d = user.timestamp ? new Date(user.timestamp * 1000).toLocaleDateString(locale) : user.date;
+                            if (!d) return t.noDate;
+                            const label = activeTab === 'fans' ? t.followsYouSince
+                              : activeTab === 'unfollowedYou' ? t.followedYouSince
+                              : activeTab === 'youUnfollowed' ? t.unfollowedOn
+                              : t.followingSince;
+                            return `${label} ${d}`;
+                          })()}
+                        </p>
                       </div>
                     </div>
                     <a 
