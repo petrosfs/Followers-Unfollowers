@@ -1,4 +1,4 @@
-import { useState, useCallback, ChangeEvent, ReactNode } from 'react';
+import { useState, useCallback, useRef, ChangeEvent, ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Users,
@@ -14,6 +14,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import Guide from './Guide';
+import ConfirmDialog, { ActionLink } from './ConfirmDialog';
 import { unzip } from 'fflate';
 import { recordFollowers, clearHistory, accountFromZipName, dateFromZipName, avatarColors, toSnapshot, setPair, sameUsers, makeBackup, parseBackup, Snapshot } from './history';
 
@@ -31,6 +32,7 @@ interface ComparisonResult {
 }
 
 type Language = 'el' | 'en';
+type HistoryAction = 'compareOlder' | 'backup' | 'restore' | 'clear';
 type Tab = 'notFollowingBack' | 'fans' | 'mutuals' | 'unfollowedYou' | 'youUnfollowed';
 
 const translations = {
@@ -56,6 +58,18 @@ const translations = {
     descUnfollowedYouFirst: 'Οι followers σου αποθηκεύτηκαν, μόνο σε αυτή τη συσκευή. Την επόμενη φορά που θα ανεβάσεις νέα εξαγωγή, εδώ θα δεις ποιοι σε έκαναν unfollow στο μεταξύ. Αν έχεις παλιότερο export ή αρχείο ιστορικού, ανέβασέ το τώρα για άμεση σύγκριση.',
     descYouUnfollowed: 'Λογαριασμοί που σταμάτησες πρόσφατα να ακολουθείς, σύμφωνα με το Instagram.',
     clearHistory: 'Διαγραφή ιστορικού',
+    cancel: 'Ακύρωση',
+    tipCompareOlder: 'Ανέβασε ένα παλιότερο zip από το Instagram, για να δεις ποιοι σε έκαναν unfollow από τότε.',
+    tipBackup: 'Κατέβασε ένα αρχείο με τη λίστα των followers σου, για να μη χαθεί η σύγκριση.',
+    tipRestore: 'Φόρτωσε ένα αρχείο ιστορικού που είχες αποθηκεύσει παλιότερα.',
+    tipClear: 'Σβήνει τη λίστα followers που θυμάται η εφαρμογή σε αυτή τη συσκευή.',
+    dlgCompareOlder: 'Αν έχεις κρατήσει ένα <b>παλιότερο export</b> από το Instagram (π.χ. από πριν ένα μήνα), επίλεξέ το στο επόμενο βήμα. Η εφαρμογή θα συγκρίνει τους followers που είχες τότε με τους τωρινούς και θα σου δείξει ποιοι έφυγαν.<br><br>Πρέπει να είναι από τον <b>ίδιο λογαριασμό</b>. Το αρχείο διαβάζεται μόνο στη συσκευή σου.',
+    dlgBackup: 'Η εφαρμογή θυμάται τους followers σου <b>μόνο σε αυτόν τον browser</b>, και αυτό μπορεί να χαθεί (π.χ. αν καθαρίσεις τα δεδομένα του browser ή αλλάξεις κινητό).<br><br>Με την αποθήκευση κατεβαίνει στη συσκευή σου ένα <b>μικρό αρχείο (.json)</b> με αυτή τη λίστα. Κράτα το, και όποτε χρειαστεί φόρτωσέ το με την <b>Επαναφορά ιστορικού</b>.<br><br>Το αρχείο περιέχει τα usernames των followers σου, οπότε μην το μοιράζεσαι.',
+    dlgRestore: 'Αν είχες πατήσει <b>Αποθήκευση ιστορικού</b> στο παρελθόν, επίλεξε στο επόμενο βήμα εκείνο το αρχείο (.json). Η εφαρμογή θα συγκρίνει τους followers που είχες τότε με τους τωρινούς.<br><br>Δουλεύει και σε άλλη συσκευή ή browser, αρκεί να είναι από τον <b>ίδιο λογαριασμό</b>.',
+    dlgClear: 'Θα διαγραφεί η λίστα των followers που έχει κρατήσει η εφαρμογή <b>σε αυτόν τον browser</b>. Η επόμενη σύγκριση θα ξεκινήσει από την αρχή.<br><br>Τα αρχεία που έχεις κατεβάσει (exports ή αρχεία ιστορικού) δεν επηρεάζονται. <b>Δεν αναιρείται.</b>',
+    chooseFile: 'Επιλογή αρχείου',
+    download: 'Λήψη αρχείου',
+    delete: 'Διαγραφή',
     compareOlder: 'Σύγκριση με παλιότερο export',
     backupHistory: 'Αποθήκευση ιστορικού',
     restoreHistory: 'Επαναφορά ιστορικού',
@@ -99,6 +113,18 @@ const translations = {
     descUnfollowedYouFirst: 'Your followers were saved, on this device only. Next time you upload a new export, you will see here who unfollowed you in the meantime. If you have an older export or a history file, upload it now to compare right away.',
     descYouUnfollowed: 'Accounts you recently stopped following, according to Instagram.',
     clearHistory: 'Clear history',
+    cancel: 'Cancel',
+    tipCompareOlder: 'Upload an older zip from Instagram to see who unfollowed you since then.',
+    tipBackup: 'Download a file with your followers list, so the comparison is not lost.',
+    tipRestore: 'Load a history file you saved earlier.',
+    tipClear: 'Deletes the followers list the app remembers on this device.',
+    dlgCompareOlder: 'If you kept an <b>older export</b> from Instagram (e.g. from a month ago), choose it in the next step. The app will compare your followers back then with your current ones and show you who left.<br><br>It must be from the <b>same account</b>. The file is read only on your device.',
+    dlgBackup: 'The app remembers your followers <b>only in this browser</b>, and that can be lost (e.g. if you clear browser data or change phone).<br><br>Saving downloads a <b>small file (.json)</b> with this list to your device. Keep it, and whenever needed load it with <b>Restore history</b>.<br><br>The file contains your followers\' usernames, so do not share it.',
+    dlgRestore: 'If you used <b>Save history</b> before, choose that file (.json) in the next step. The app will compare your followers back then with your current ones.<br><br>It also works on another device or browser, as long as it is from the <b>same account</b>.',
+    dlgClear: 'The followers list the app has kept <b>in this browser</b> will be deleted. The next comparison will start from scratch.<br><br>Files you downloaded (exports or history files) are not affected. <b>This cannot be undone.</b>',
+    chooseFile: 'Choose file',
+    download: 'Download file',
+    delete: 'Delete',
     compareOlder: 'Compare with an older export',
     backupHistory: 'Save history',
     restoreHistory: 'Restore history',
@@ -138,6 +164,11 @@ export default function App() {
   const [guideOpen, setGuideOpen] = useState(false);
   // Errors from the history actions, shown inside the 'Unfollowed you' tab
   const [historyError, setHistoryError] = useState<string | null>(null);
+  // History action waiting for the user's confirmation
+  const [pendingAction, setPendingAction] = useState<HistoryAction | null>(null);
+  const olderInputRef = useRef<HTMLInputElement>(null);
+  const restoreInputRef = useRef<HTMLInputElement>(null);
+  const cancelAction = useCallback(() => setPendingAction(null), []);
   const closeGuide = useCallback(() => setGuideOpen(false), []);
 
   const t = translations[language];
@@ -448,6 +479,21 @@ export default function App() {
     applyHistory(history.account, history.current, previous);
   };
 
+  // Runs a history action after the user confirmed it in the dialog
+  const runPendingAction = () => {
+    const action = pendingAction;
+    setPendingAction(null);
+    if (!history) return;
+    if (action === 'compareOlder') olderInputRef.current?.click();
+    if (action === 'restore') restoreInputRef.current?.click();
+    if (action === 'backup') handleBackup();
+    if (action === 'clear') {
+      clearHistory(history.account);
+      setHistory({ ...history, previousAt: null, unfollowedYou: [], cleared: true });
+      setHistoryError(null);
+    }
+  };
+
   const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>, type: 'followers' | 'following') => {
     const files: File[] = e.target.files ? Array.from(e.target.files) : [];
     // Reset the input so selecting the same file(s) again still triggers onChange
@@ -709,31 +755,16 @@ export default function App() {
               )}
               {activeTab === 'unfollowedYou' && history && (
                 <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-xs">
-                  <label className="text-purple-600 underline cursor-pointer hover:text-purple-800">
-                    {t.compareOlder}
-                    <input type="file" accept=".zip,.json,.html" multiple className="hidden" onChange={handleOlderExport} />
-                  </label>
+                  <ActionLink label={t.compareOlder} tip={t.tipCompareOlder} onClick={() => setPendingAction('compareOlder')} />
                   {!history.cleared && (
-                    <button onClick={handleBackup} className="text-purple-600 underline hover:text-purple-800">
-                      {t.backupHistory}
-                    </button>
+                    <ActionLink label={t.backupHistory} tip={t.tipBackup} onClick={() => setPendingAction('backup')} />
                   )}
-                  <label className="text-purple-600 underline cursor-pointer hover:text-purple-800">
-                    {t.restoreHistory}
-                    <input type="file" accept=".json" className="hidden" onChange={handleRestore} />
-                  </label>
+                  <ActionLink label={t.restoreHistory} tip={t.tipRestore} onClick={() => setPendingAction('restore')} />
                   {!history.cleared && (
-                    <button
-                      onClick={() => {
-                        clearHistory(history.account);
-                        setHistory({ ...history, previousAt: null, unfollowedYou: [], cleared: true });
-                        setError(null);
-                      }}
-                      className="text-neutral-400 underline hover:text-red-500"
-                    >
-                      {t.clearHistory}
-                    </button>
+                    <ActionLink label={t.clearHistory} tip={t.tipClear} danger alignRight onClick={() => setPendingAction('clear')} />
                   )}
+                  <input ref={olderInputRef} type="file" accept=".zip,.json,.html" multiple className="hidden" onChange={handleOlderExport} />
+                  <input ref={restoreInputRef} type="file" accept=".json" className="hidden" onChange={handleRestore} />
                 </div>
               )}
             </div>
@@ -813,6 +844,27 @@ export default function App() {
       </main>
 
       <Guide open={guideOpen} onClose={closeGuide} language={language} />
+
+      <ConfirmDialog
+        open={pendingAction !== null}
+        title={
+          pendingAction === 'compareOlder' ? t.compareOlder
+          : pendingAction === 'backup' ? t.backupHistory
+          : pendingAction === 'restore' ? t.restoreHistory
+          : t.clearHistory
+        }
+        body={
+          pendingAction === 'compareOlder' ? t.dlgCompareOlder
+          : pendingAction === 'backup' ? t.dlgBackup
+          : pendingAction === 'restore' ? t.dlgRestore
+          : t.dlgClear
+        }
+        confirmLabel={pendingAction === 'backup' ? t.download : pendingAction === 'clear' ? t.delete : t.chooseFile}
+        cancelLabel={t.cancel}
+        danger={pendingAction === 'clear'}
+        onConfirm={runPendingAction}
+        onCancel={cancelAction}
+      />
 
       {/* Footer */}
       <footer className="mt-auto py-8 text-center text-neutral-400 text-sm">
