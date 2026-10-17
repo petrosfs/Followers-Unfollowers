@@ -570,6 +570,7 @@ export default function App() {
       {/* Footer */}
       <footer className="mt-auto py-8 text-center text-neutral-400 text-sm">
         <p>© 2026 {t.title} • {t.madeForFriends}</p>
+        <p className="mt-1 text-xs">v{__APP_VERSION__}</p>
       </footer>
     </div>
   );
