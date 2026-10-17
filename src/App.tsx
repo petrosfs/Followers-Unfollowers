@@ -1,4 +1,4 @@
-import { useState, ChangeEvent, ReactNode } from 'react';
+import { useState, useCallback, ChangeEvent, ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Users,
@@ -9,8 +9,12 @@ import {
   ArrowRightLeft,
   Info,
   ExternalLink,
-  Trash2
+  Trash2,
+  HelpCircle,
+  ChevronRight
 } from 'lucide-react';
+import Guide from './Guide';
+import { unzip } from 'fflate';
 
 interface UserData {
   username: string;
@@ -31,11 +35,13 @@ const translations = {
   el: {
     title: 'Followers & Unfollowers',
     howItWorks: 'Πώς λειτουργεί;',
-    instructions: 'Συνδεθείτε στην εφαρμογή του <b>Instagram</b>. Πήγαινε στις <b>Ρυθμίσεις</b> → <b>Account Center</b> → <b>Πληροφορίες και άδειες</b> → <b>Εξαγωγή δεδομένων</b> → <b>Create export</b> → <b>Export to device</b> → <b>Επιλογή πληροφοριών προς εξαγωγή</b>. Για πιο σωστά αποτελέσματα στο φίλτρο <b>Date Range</b>, επιλέξτε <b>All time</b>. Ανέβασε τα αρχεία <b>followers</b> και <b>following</b> εδώ (υποστηρίζονται αρχεία HTML, JSON ή TXT - προτείνεται η μορφή JSON). Αν το Instagram σού έδωσε πολλά αρχεία (π.χ. <b>followers_1</b>, <b>followers_2</b>), επίλεξέ τα όλα μαζί.',
+    instructions: 'Κατέβασε από το Instagram την εξαγωγή με τους <b>followers</b> και <b>following</b> σου (μορφή <b>JSON</b>, εύρος <b>All time</b>) και ανέβασε εδώ το <b>.zip</b> όπως είναι. Η εφαρμογή βρίσκει μόνη της τα αρχεία.',
+    openGuide: 'Δες αναλυτικά τα βήματα',
+    guide: 'Οδηγός',
     followers: 'Followers',
     following: 'Following',
     users: 'χρήστες',
-    uploadPlaceholder: 'Κάνε κλικ ή σύρε το αρχείο εδώ',
+    uploadPlaceholder: 'Κάνε κλικ ή σύρε το .zip ή τα αρχεία εδώ',
     notFollowingBack: 'Δεν σε ακολουθούν',
     fans: 'Fans',
     mutuals: 'Mutuals',
@@ -45,16 +51,20 @@ const translations = {
     madeForFriends: 'Φτιαγμένο για φίλους',
     errorParsing: 'Σφάλμα κατά την ανάγνωση του αρχείου. Βεβαιωθείτε ότι είναι έγκυρο αρχείο εξαγωγής του Instagram.',
     noDate: 'Χωρίς ημερομηνία',
-    files: 'αρχεία'
+    files: 'αρχεία',
+    errorZip: 'Δεν ήταν δυνατό να ανοίξει το .zip.',
+    zipEmpty: 'Δεν βρέθηκαν αρχεία followers/following μέσα στο .zip. Βεβαιώσου ότι στην εξαγωγή επέλεξες το Followers and following.'
   },
   en: {
     title: 'Followers & Unfollowers',
     howItWorks: 'How it works?',
-    instructions: 'Log in to the <b>Instagram</b> app. Go to <b>Settings</b> → <b>Account Center</b> → <b>Your information and permissions</b> → <b>Download your information</b> → <b>Create export</b> → <b>Export to device</b> → <b>Select types of information</b>. For more accurate results in the <b>Date Range</b> filter, select <b>All time</b>. Upload your <b>followers</b> and <b>following</b> files here (HTML, JSON, or TXT supported - JSON is recommended). If Instagram gave you several files (e.g. <b>followers_1</b>, <b>followers_2</b>), select them all at once.',
+    instructions: 'Download the export of your <b>followers</b> and <b>following</b> from Instagram (format <b>JSON</b>, range <b>All time</b>) and upload the <b>.zip</b> here as is. The app finds the files on its own.',
+    openGuide: 'See the steps in detail',
+    guide: 'Guide',
     followers: 'Followers',
     following: 'Following',
     users: 'users',
-    uploadPlaceholder: 'Click or drag file here',
+    uploadPlaceholder: 'Click or drag the .zip or files here',
     notFollowingBack: 'Not following back',
     fans: 'Fans',
     mutuals: 'Mutuals',
@@ -64,7 +74,9 @@ const translations = {
     madeForFriends: 'Made for friends',
     errorParsing: 'Error parsing file. Please ensure it\'s a valid Instagram export file.',
     noDate: 'No date',
-    files: 'files'
+    files: 'files',
+    errorZip: 'Could not open the .zip file.',
+    zipEmpty: 'No followers/following files found in the .zip. Make sure you selected Followers and following in the export.'
   }
 };
 
@@ -77,6 +89,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'notFollowingBack' | 'fans' | 'mutuals'>('notFollowingBack');
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const closeGuide = useCallback(() => setGuideOpen(false), []);
 
   const t = translations[language];
 
@@ -244,6 +258,43 @@ export default function App() {
     return merged;
   };
 
+  // Extracts the followers / following files from an Instagram export .zip.
+  // JSON files are preferred; HTML files are used only if no JSON is present.
+  const extractFromZip = async (zipFile: File): Promise<{ followers: File[]; following: File[] }> => {
+    const buffer = new Uint8Array(await zipFile.arrayBuffer());
+    const isFollowers = (name: string) => /^followers(_\d+)?\.(json|html)$/i.test(name);
+    const isFollowing = (name: string) => /^following\.(json|html)$/i.test(name);
+    const baseName = (path: string) => path.split('/').pop() || '';
+
+    const entries = await new Promise<Record<string, Uint8Array>>((resolve, reject) => {
+      unzip(buffer, { filter: f => { const n = baseName(f.name); return isFollowers(n) || isFollowing(n); } },
+        (err, data) => (err ? reject(err) : resolve(data)));
+    });
+
+    const toFiles = (match: (n: string) => boolean) => {
+      const all = Object.entries(entries)
+        .filter(([path]) => match(baseName(path)))
+        .map(([path, data]) => new File([data], baseName(path)));
+      const json = all.filter(f => f.name.toLowerCase().endsWith('.json'));
+      return json.length > 0 ? json : all;
+    };
+
+    return { followers: toFiles(isFollowers), following: toFiles(isFollowing) };
+  };
+
+  const parseAll = async (files: File[]): Promise<UserData[] | null> => {
+    const lists: UserData[][] = [];
+    for (const file of files) {
+      try {
+        lists.push(await parseFile(file));
+      } catch (err) {
+        setError(`${t.errorParsing} (${file.name})`);
+        return null;
+      }
+    }
+    return mergeUsers(lists);
+  };
+
   const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>, type: 'followers' | 'following') => {
     const files: File[] = e.target.files ? Array.from(e.target.files) : [];
     // Reset the input so selecting the same file(s) again still triggers onChange
@@ -251,18 +302,45 @@ export default function App() {
     if (files.length === 0) return;
 
     setError(null);
-    const lists: UserData[][] = [];
-    for (const file of files) {
-      try {
-        lists.push(await parseFile(file));
-      } catch (err) {
-        setError(`${t.errorParsing} (${file.name})`);
+    const zips = files.filter(f => f.name.toLowerCase().endsWith('.zip'));
+    const plain = files.filter(f => !f.name.toLowerCase().endsWith('.zip'));
+
+    // A .zip fills both boxes at once, whichever box it was dropped on
+    if (zips.length > 0) {
+      const found = { followers: [] as File[], following: [] as File[] };
+      for (const zip of zips) {
+        try {
+          const r = await extractFromZip(zip);
+          found.followers.push(...r.followers);
+          found.following.push(...r.following);
+        } catch (err) {
+          setError(`${t.errorZip} (${zip.name})`);
+          return;
+        }
+      }
+      if (found.followers.length === 0 && found.following.length === 0) {
+        setError(`${t.zipEmpty} (${zips[0].name})`);
         return;
       }
+      const zipLabel = zips.length === 1 ? zips[0].name : `${zips.length} ${t.files}`;
+      if (found.followers.length > 0) {
+        const data = await parseAll(found.followers);
+        if (!data) return;
+        setFollowers(data);
+        setFollowersFileName(zipLabel);
+      }
+      if (found.following.length > 0) {
+        const data = await parseAll(found.following);
+        if (!data) return;
+        setFollowing(data);
+        setFollowingFileName(zipLabel);
+      }
+      if (plain.length === 0) return;
     }
 
-    const data = mergeUsers(lists);
-    const label = files.length === 1 ? files[0].name : `${files.length} ${t.files}`;
+    const data = await parseAll(plain);
+    if (!data) return;
+    const label = plain.length === 1 ? plain[0].name : `${plain.length} ${t.files}`;
     if (type === 'followers') {
       setFollowers(data);
       setFollowersFileName(label);
@@ -308,9 +386,17 @@ export default function App() {
             <div className="bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600 p-1.5 rounded-xl">
               <ArrowRightLeft className="w-5 h-5 text-white" />
             </div>
-            <h1 className="text-xl font-bold tracking-tight">{t.title}</h1>
+            <h1 className="text-lg sm:text-xl font-bold tracking-tight whitespace-nowrap">{t.title}</h1>
           </button>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+            <button
+              onClick={() => setGuideOpen(true)}
+              aria-label={t.guide}
+              title={t.guide}
+              className="text-neutral-500 hover:text-purple-600 transition-colors"
+            >
+              <HelpCircle className="w-5 h-5" />
+            </button>
             <button 
               onClick={() => setLanguage(language === 'el' ? 'en' : 'el')}
               className="text-xs font-bold bg-neutral-100 px-2.5 py-1.5 rounded-lg hover:bg-neutral-200 transition-colors uppercase"
@@ -347,6 +433,13 @@ export default function App() {
                     className="text-sm text-blue-800 leading-relaxed"
                     dangerouslySetInnerHTML={{ __html: t.instructions }}
                   />
+                  <button
+                    onClick={() => setGuideOpen(true)}
+                    className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-blue-700 hover:text-blue-900 transition-colors"
+                  >
+                    {t.openGuide}
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -472,6 +565,8 @@ export default function App() {
         )}
       </main>
 
+      <Guide open={guideOpen} onClose={closeGuide} language={language} />
+
       {/* Footer */}
       <footer className="mt-auto py-8 text-center text-neutral-400 text-sm">
         <p>© 2026 {t.title} • {t.madeForFriends}</p>
@@ -493,7 +588,7 @@ function UploadCard({ title, fileName, count, onUpload, icon, placeholder, users
     <div className={`relative overflow-hidden bg-white border-2 border-dashed rounded-2xl p-6 transition-all ${fileName ? 'border-green-500 bg-green-50/30' : 'border-neutral-200 hover:border-purple-300'}`}>
       <input 
         type="file" 
-        accept=".html,.json,.txt"
+        accept=".zip,.json,.html,.txt"
         multiple
         onChange={onUpload}
         className="absolute inset-0 opacity-0 cursor-pointer z-10"
