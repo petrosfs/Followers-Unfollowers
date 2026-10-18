@@ -115,8 +115,16 @@ export function dateFromZipName(name: string): number | undefined {
 
 /** Stable pastel colours per username, so people are easier to tell apart */
 export function avatarColors(name: string) {
-  let h = 0;
-  for (const c of name.toLowerCase()) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  const hue = h % 360;
+  // FNV-1a hash plus a final mix, so names that differ by one character
+  // (e.g. user1 / user2) still get clearly different hues
+  let h = 0x811c9dc5;
+  for (const c of name.toLowerCase()) {
+    h ^= c.charCodeAt(0);
+    h = Math.imul(h, 0x01000193);
+  }
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x45d9f3b);
+  h ^= h >>> 16;
+  const hue = (h >>> 0) % 360;
   return { background: `hsl(${hue} 80% 86%)`, color: `hsl(${hue} 60% 28%)` };
 }
