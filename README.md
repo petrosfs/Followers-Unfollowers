@@ -75,6 +75,10 @@ React 19 · TypeScript · Vite · Tailwind CSS · Motion · lucide-react · ffla
 
 Κάθε push στο `main` ανεβαίνει αυτόματα στο GitHub Pages μέσω GitHub Actions.
 
+## Σχόλια και προτάσεις
+
+Έχεις μια ιδέα ή βρήκες πρόβλημα; [Άνοιξε ένα issue](https://github.com/petrosfs/Followers-Unfollowers/issues/new/choose) (χρειάζεται λογαριασμός GitHub).
+
 ## Άδεια
 
 [MIT](LICENSE)
