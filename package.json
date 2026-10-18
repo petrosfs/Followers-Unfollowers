@@ -1,7 +1,7 @@
 {
   "name": "followers-unfollowers",
   "private": true,
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "Compare Instagram followers and following lists to see who doesn't follow you back.",
   "type": "module",
   "scripts": {

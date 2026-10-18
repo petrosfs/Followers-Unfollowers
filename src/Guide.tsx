@@ -1,6 +1,10 @@
 import { useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X } from 'lucide-react';
+import { X, ExternalLink } from 'lucide-react';
+
+// Direct links into Instagram's Accounts Center (open in the browser; may ask to log in)
+export const IG_INFO_URL = 'https://accountscenter.instagram.com/info_and_permissions/';
+export const IG_EXPORT_URL = 'https://accountscenter.instagram.com/info_and_permissions/dyi/';
 
 type Language = 'el' | 'en';
 
@@ -9,13 +13,19 @@ interface GuideStep {
   body: string;
   /** Optional screenshot, path relative to the site root (e.g. 'guide/step-1.jpg') */
   image?: string;
+  /** Optional direct link that skips to this screen */
+  link?: string;
 }
 
-const content: Record<Language, { heading: string; intro: string; close: string; tip: string; steps: GuideStep[]; dataTitle: string; dataItems: string[] }> = {
+const content: Record<Language, { heading: string; intro: string; close: string; tip: string; steps: GuideStep[]; dataTitle: string; dataItems: string[]; shortcutTitle: string; shortcutBody: string; shortcutButton: string; openLink: string }> = {
   el: {
     heading: 'Αναλυτικός οδηγός',
     intro: 'Το Instagram δεν δίνει τη λίστα απευθείας. Ζητάς ένα αρχείο εξαγωγής των δεδομένων σου και το ανεβάζεις εδώ. Τα αρχεία διαβάζονται μόνο στη συσκευή σου και δεν στέλνονται πουθενά.',
     close: 'Κλείσιμο',
+    shortcutTitle: 'Συντόμευση',
+    shortcutBody: 'Άνοιξε κατευθείαν τη σελίδα εξαγωγής του Instagram και συνέχισε από το βήμα 4 (<b>Create export</b>). Ανοίγει στον browser· αν σου ζητήσει, συνδέσου στο Instagram.',
+    shortcutButton: 'Άνοιξε την εξαγωγή',
+    openLink: 'Άνοιγμα',
     tip: 'Οι εικόνες είναι από το Instagram στα αγγλικά. Τα ονόματα των μενού μπορεί να διαφέρουν λίγο ανάλογα με την έκδοση και τη γλώσσα.',
     dataTitle: 'Πού αποθηκεύονται τα δεδομένα',
     dataItems: [
@@ -33,11 +43,13 @@ const content: Record<Language, { heading: string; intro: string; close: string;
         title: 'Your information and permissions',
         body: 'Πάτα <b>Your information and permissions</b> (Οι πληροφορίες και οι άδειές σου).',
         image: 'guide/step-1.png',
+        link: IG_INFO_URL,
       },
       {
         title: 'Export your information',
         body: 'Πάτα <b>Export your information</b> (Εξαγωγή των πληροφοριών σου).',
         image: 'guide/step-2.png',
+        link: IG_EXPORT_URL,
       },
       {
         title: 'Create export',
@@ -63,6 +75,7 @@ const content: Record<Language, { heading: string; intro: string; close: string;
         title: 'Περίμενε και κατέβασε',
         body: 'Η εξαγωγή μπορεί να πάρει από λίγα λεπτά έως αρκετές ώρες. Όταν είναι έτοιμη θα λάβεις ειδοποίηση. Γύρνα στο <b>Export your information</b> και κατέβασε το αρχείο <b>.zip</b>. Έχεις <b>4 μέρες</b> για να το κατεβάσεις.',
         image: 'guide/step-7.png',
+        link: IG_EXPORT_URL,
       },
       {
         title: 'Ανέβασέ το εδώ',
@@ -78,6 +91,10 @@ const content: Record<Language, { heading: string; intro: string; close: string;
     heading: 'Step-by-step guide',
     intro: "Instagram doesn't show this list directly. You request an export of your data and upload it here. Files are read only on your device and are never sent anywhere.",
     close: 'Close',
+    shortcutTitle: 'Shortcut',
+    shortcutBody: 'Open Instagram\'s export page directly and continue from step 4 (<b>Create export</b>). It opens in your browser; log in to Instagram if asked.',
+    shortcutButton: 'Open the export page',
+    openLink: 'Open',
     tip: 'Screenshots are from Instagram in English. Menu names may differ slightly depending on the version and language.',
     dataTitle: 'Where your data is kept',
     dataItems: [
@@ -95,11 +112,13 @@ const content: Record<Language, { heading: string; intro: string; close: string;
         title: 'Your information and permissions',
         body: 'Tap <b>Your information and permissions</b>.',
         image: 'guide/step-1.png',
+        link: IG_INFO_URL,
       },
       {
         title: 'Export your information',
         body: 'Tap <b>Export your information</b>.',
         image: 'guide/step-2.png',
+        link: IG_EXPORT_URL,
       },
       {
         title: 'Create export',
@@ -125,6 +144,7 @@ const content: Record<Language, { heading: string; intro: string; close: string;
         title: 'Wait and download',
         body: 'The export can take from a few minutes to several hours. You will get a notification when it is ready. Go back to <b>Export your information</b> and download the <b>.zip</b> file. You have <b>4 days</b> to download it.',
         image: 'guide/step-7.png',
+        link: IG_EXPORT_URL,
       },
       {
         title: 'Upload it here',
@@ -188,6 +208,21 @@ export default function Guide({ open, onClose, language }: { open: boolean; onCl
             <div className="overflow-y-auto px-5 py-5 space-y-5">
               <p className="text-sm text-neutral-600 leading-relaxed">{c.intro}</p>
 
+              <div className="rounded-2xl border border-purple-200 bg-purple-50 p-4 space-y-3">
+                <p className="text-sm text-purple-900 leading-relaxed">
+                  <b>{c.shortcutTitle}:</b> <span dangerouslySetInnerHTML={{ __html: c.shortcutBody }} />
+                </p>
+                <a
+                  href={IG_EXPORT_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700 transition-colors"
+                >
+                  {c.shortcutButton}
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              </div>
+
               <ol className="space-y-5">
                 {c.steps.map((step, i) => (
                   <li key={i} className="flex gap-3">
@@ -200,6 +235,17 @@ export default function Guide({ open, onClose, language }: { open: boolean; onCl
                         className="text-sm text-neutral-600 leading-relaxed"
                         dangerouslySetInnerHTML={{ __html: step.body }}
                       />
+                      {step.link && (
+                        <a
+                          href={step.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-sm font-semibold text-purple-600 hover:text-purple-800"
+                        >
+                          {c.openLink}
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
                       {step.image && (
                         <img
                           src={`${import.meta.env.BASE_URL}${step.image}`}

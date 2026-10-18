@@ -14,7 +14,7 @@ import {
   SlidersHorizontal,
   ChevronRight
 } from 'lucide-react';
-import Guide from './Guide';
+import Guide, { IG_EXPORT_URL } from './Guide';
 import ConfirmDialog, { ActionLink } from './ConfirmDialog';
 import { unzip } from 'fflate';
 import { recordFollowers, clearHistory, accountFromZipName, dateFromZipName, avatarColors, toSnapshot, setPair, sameUsers, makeBackup, parseBackup, Snapshot } from './history';
@@ -43,6 +43,7 @@ const translations = {
     howItWorks: 'Πώς λειτουργεί;',
     instructions: 'Κατέβασε από το Instagram την εξαγωγή με τους <b>followers</b> και <b>following</b> σου (μορφή <b>JSON</b>, εύρος <b>All time</b>) και ανέβασε εδώ το <b>.zip</b> όπως είναι. Η εφαρμογή βρίσκει μόνη της τα αρχεία.',
     openGuide: 'Δες αναλυτικά τα βήματα',
+    openExport: 'Άνοιξε την εξαγωγή στο Instagram',
     guide: 'Οδηγός',
     followers: 'Followers',
     following: 'Following',
@@ -107,6 +108,7 @@ const translations = {
     howItWorks: 'How it works?',
     instructions: 'Download the export of your <b>followers</b> and <b>following</b> from Instagram (format <b>JSON</b>, range <b>All time</b>) and upload the <b>.zip</b> here as is. The app finds the files on its own.',
     openGuide: 'See the steps in detail',
+    openExport: 'Open the export page on Instagram',
     guide: 'Guide',
     followers: 'Followers',
     following: 'Following',
@@ -694,13 +696,24 @@ export default function App() {
                     className="text-sm text-blue-800 leading-relaxed"
                     dangerouslySetInnerHTML={{ __html: t.instructions }}
                   />
-                  <button
-                    onClick={() => setGuideOpen(true)}
-                    className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-blue-700 hover:text-blue-900 transition-colors"
-                  >
-                    {t.openGuide}
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <a
+                      href={IG_EXPORT_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+                    >
+                      {t.openExport}
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                    <button
+                      onClick={() => setGuideOpen(true)}
+                      className="inline-flex items-center gap-1 text-sm font-semibold text-blue-700 hover:text-blue-900 transition-colors"
+                    >
+                      {t.openGuide}
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             </motion.div>
